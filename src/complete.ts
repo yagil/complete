@@ -20,23 +20,40 @@
  * (Install `lms` by running `npx lmstudio install-cli`)
  * ================================================================================
  */
-import { LMStudioClient } from "@lmstudio/sdk";
+import { LLMDynamicHandle, LLMSpecificModel, LMStudioClient } from "@lmstudio/sdk";
+
+// For terminal colors
+const ANSI_GREEN = "\x1b[32m";
+const ANSI_GRAY = "\x1b[90m";
+const ANSI_PURPLE = "\x1b[35m";
+const ANSI_RESET = "\x1b[0m";
 
 async function main() {
     // Connect to LM Studio
     const client = new LMStudioClient();
     
-    // Load a model. If you don't have this model, download from the in-app downloader.
-    // This program expects a "base model" (not an "instruct fine-tuned" model).
-    const model = await client.llm.load("QuantFactory/Meta-Llama-3-8B-GGUF", { 
-      config: { gpuOffload: "max" }, // Offload to GPU if available
-      preset: "LM Studio Blank Preset", // Good choice for base models
-      onProgress: (progress) => { drawProgressAnimation(progress); },
-      verbose: false
-    });
+    const modelPath = "QuantFactory/Meta-Llama-3-8B-GGUF";
+    const currentlyLoadedModels = await client.llm.listLoaded();
+    const modelIsLoaded = currentlyLoadedModels.filter((model) => model.path.startsWith(modelPath)).length > 0;
 
-    // If the model is already loaded, you can get it like this:
-    // const model = await client.llm.get("QuantFactory/Meta-Llama-3-8B-GGUF");
+    let model: LLMSpecificModel|LLMDynamicHandle;
+
+    if (!modelIsLoaded) {
+      console.log("Model not loaded. Loading model...");
+      // Load a model. If you don't have this model, download from the in-app downloader.
+      // This program expects a "base model" (not an "instruct fine-tuned" model).
+      model = await client.llm.load(modelPath, { 
+        config: { gpuOffload: "max" }, // Offload to GPU if available
+        preset: "LM Studio Blank Preset", // Good choice for base models
+        onProgress: (progress) => { drawProgressAnimation(progress); },
+        verbose: false,
+        noHup: true // Use the 'noHup' field to keep the model loaded after the client exits
+      });
+      
+    } else {
+      console.log(`${ANSI_PURPLE}[Model already loaded. You're good to go]${ANSI_RESET}`);
+      model = await client.llm.get(modelPath);
+    }
 
     // Clear the loading message
     process.stdout.write("\r\x1b[K");
@@ -55,8 +72,6 @@ async function main() {
       
     const prediction = model.complete(userInput, { temperature: 0 });
 
-    const ANSI_GREEN = "\x1b[32m";
-    const ANSI_RESET = "\x1b[0m";
     process.stdout.write(ANSI_GREEN);
     for await (const text of prediction) {
         process.stdout.write(text);
